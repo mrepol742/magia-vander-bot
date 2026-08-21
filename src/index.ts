@@ -8,6 +8,7 @@ import {
 } from "discord.js";
 import { config } from "./config";
 import { askAgent, ChatMessage } from "./openrouter";
+import { getCached, setCached } from "./cache";
 
 const client = new Client({
   intents: [
@@ -76,9 +77,13 @@ async function handleQuestion(
   channelId: string,
   question: string,
 ): Promise<string> {
+  const cached = getCached(question);
+  if (cached) return cached;
+
   const history = historyByChannel.get(channelId) || [];
   const reply = await askAgent(question, history);
   pushHistory(channelId, question, reply);
+  setCached(question, reply);
   return reply;
 }
 
@@ -151,7 +156,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
     if ("sendTyping" in message.channel) {
       await message.channel.sendTyping();
     }
-    
+
     const reply = await handleQuestion(message.channelId, question);
     for (const part of chunk(reply)) {
       await message.reply(part);
