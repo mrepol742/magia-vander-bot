@@ -28,6 +28,8 @@ export const config = {
   textPrefix: process.env.TEXT_PREFIX || "!",
   enableTextPrefix:
     (process.env.ENABLE_TEXT_PREFIX || "true").toLowerCase() === "true",
+  respondToQuestionMarks:
+    (process.env.RESPOND_TO_QUESTION_MARKS || "false").toLowerCase() === "true",
 
   allowedChannelIds: (process.env.ALLOWED_CHANNEL_IDS || "")
     .split(",")

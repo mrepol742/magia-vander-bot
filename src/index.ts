@@ -133,18 +133,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.on(Events.MessageCreate, async (message: Message) => {
-  if (!config.enableTextPrefix) return;
   if (message.author.bot) return;
-  if (!message.content.startsWith(config.textPrefix)) return;
   if (!isChannelAllowed(message.channelId)) return;
 
-  const question = message.content.slice(config.textPrefix.length).trim();
+  const raw = message.content.trim();
+  let question: string | null = null;
+
+  if (config.enableTextPrefix && raw.startsWith(config.textPrefix)) {
+    question = raw.slice(config.textPrefix.length).trim();
+  } else if (config.respondToQuestionMarks && raw.endsWith("?")) {
+    question = raw;
+  }
+
   if (!question) return;
 
   try {
     if ("sendTyping" in message.channel) {
       await message.channel.sendTyping();
     }
+    
     const reply = await handleQuestion(message.channelId, question);
     for (const part of chunk(reply)) {
       await message.reply(part);
