@@ -25,7 +25,7 @@ const historyByChannel = new Map<string, ChatMessage[]>();
 
 /*
  * Pushes a user message and bot reply to the channel's history.
- * 
+ *
  * @param channelId The ID of the channel.
  * @param userMsg The user's message.
  * @param botMsg The bot's reply.
@@ -40,9 +40,20 @@ function pushHistory(channelId: string, userMsg: string, botMsg: string) {
   historyByChannel.set(channelId, h);
 }
 
+/**
+ * Checks if a channel is allowed to be used with the bot.
+ *
+ * @param channelId The ID of the channel.
+ * @returns True if the channel is allowed, false otherwise.
+ */
+function isChannelAllowed(channelId: string): boolean {
+  if (config.allowedChannelIds.length === 0) return true;
+  return config.allowedChannelIds.includes(channelId);
+}
+
 /*
  * Splits a text into chunks of a specified size.
- * 
+ *
  * @param text The text to split.
  * @param size The size of each chunk.
  * @returns An array of text chunks.
@@ -56,7 +67,7 @@ function chunk(text: string, size = 1900): string[] {
 
 /*
  * Handles a user question by asking the agent and pushing the history.
- * 
+ *
  * @param channelId The ID of the channel.
  * @param question The user's question.
  * @returns The agent's reply.
@@ -98,6 +109,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
   const ci = interaction as ChatInputCommandInteraction;
   if (ci.commandName !== config.commandName) return;
 
+  if (!isChannelAllowed(ci.channelId)) {
+    console.log(`Channel ${ci.channelId} is not allowed.`);
+    return;
+  }
+
   const question = ci.options.getString("question", true);
   await ci.deferReply();
 
@@ -120,6 +136,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
   if (!config.enableTextPrefix) return;
   if (message.author.bot) return;
   if (!message.content.startsWith(config.textPrefix)) return;
+  if (!isChannelAllowed(message.channelId)) return;
 
   const question = message.content.slice(config.textPrefix.length).trim();
   if (!question) return;

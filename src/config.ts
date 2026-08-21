@@ -29,6 +29,11 @@ export const config = {
   enableTextPrefix:
     (process.env.ENABLE_TEXT_PREFIX || "true").toLowerCase() === "true",
 
+  allowedChannelIds: (process.env.ALLOWED_CHANNEL_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean),
+
   openrouterApiKey: required("OPENROUTER_API_KEY"),
   openrouterModel: process.env.OPENROUTER_MODEL || "openrouter/auto",
   openrouterSiteUrl: process.env.OPENROUTER_SITE_URL || "",

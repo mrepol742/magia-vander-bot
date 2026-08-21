@@ -53,6 +53,9 @@ Q10. Bakit hindi ako makabili/makaroll/makaspin sa Dungeon Shop kahit
 maraming Soul Shards?
 A: Kailangan mo munang matapos ng 5-6x ang 3-World Mode ng Dungeon,
 kahit Easy Mode lang, para mabilis itong mabuksan/ma-unlock.
+
+Q11: Na uupgrade ba yung apex set/weapon/armor (raven set/summer duck set/berseker set)?
+A: Enchant lang pwede at pwede rin siyang gawing gold or shiny via upgrade section sa spawn area.
 `.trim();
 
 export const STATS_KNOWLEDGE = `
