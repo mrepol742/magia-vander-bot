@@ -1,0 +1,25 @@
+{
+  "name": "magia-vander-bot",
+  "version": "1.0.0",
+  "description": "Lightweight, configurable Discord agent bot powered by OpenRouter.",
+  "main": "dist/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p .",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "deploy": "ts-node src/deploy-commands.ts"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "ts-node": "^10.9.2",
+    "@types/node": "^20.14.15"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}
