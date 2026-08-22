@@ -9,6 +9,9 @@ import {
 import { config } from "./config";
 import { askAgent, ChatMessage } from "./openrouter";
 import { getCached, setCached } from "./cache";
+import { formatRetrievedContext, retrieveContext } from "./retrieval";
+import { prisma } from "./db";
+import { embed } from "./embeddings";
 
 const client = new Client({
   intents: [
@@ -52,6 +55,16 @@ function isChannelAllowed(channelId: string): boolean {
   return config.allowedChannelIds.includes(channelId);
 }
 
+/**
+ * Checks if a user is an admin.
+ *
+ * @param userId The ID of the user.
+ * @returns True if the user is an admin, false otherwise.
+ */
+function isAdmin(userId: string): boolean {
+  return config.adminUserIds.includes(userId);
+}
+
 /*
  * Splits a text into chunks of a specified size.
  *
@@ -80,16 +93,20 @@ async function handleQuestion(
   const cached = getCached(question);
   if (cached) return cached;
 
+  const retrieved = await retrieveContext(question);
+  const contextText = formatRetrievedContext(retrieved);
+
   const history = historyByChannel.get(channelId) || [];
-  const reply = await askAgent(question, history);
+  const reply = await askAgent(question, contextText, history);
+
   pushHistory(channelId, question, reply);
   setCached(question, reply);
+
   return reply;
 }
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`${config.botName} is online as ${c.user.tag}.`);
-  console.log(`Slash command: /${config.commandName}`);
   if (config.enableTextPrefix) {
     console.log(`Text prefix enabled: "${config.textPrefix}"`);
   }
@@ -112,28 +129,157 @@ client.once(Events.ClientReady, async (c) => {
 client.on(Events.InteractionCreate, async (interaction) => {
   if (!interaction.isChatInputCommand()) return;
   const ci = interaction as ChatInputCommandInteraction;
-  if (ci.commandName !== config.commandName) return;
 
   if (!isChannelAllowed(ci.channelId)) {
     console.log(`Channel ${ci.channelId} is not allowed.`);
     return;
   }
 
-  const question = ci.options.getString("question", true);
-  await ci.deferReply();
+  console.log(`[command] ${ci.commandName}`);
 
-  try {
-    const reply = await handleQuestion(ci.channelId, question);
-    const parts = chunk(reply);
-    await ci.editReply(parts[0]);
-    for (let i = 1; i < parts.length; i++) {
-      await ci.followUp(parts[i]);
+  if (ci.commandName === "magia") {
+    const question = ci.options.getString("question", true);
+    await ci.deferReply();
+
+    try {
+      const reply = await handleQuestion(ci.channelId, question);
+      const parts = chunk(reply);
+      await ci.editReply(parts[0]);
+      for (let i = 1; i < parts.length; i++) {
+        await ci.followUp(parts[i]);
+      }
+    } catch (err) {
+      console.error(err);
+      await ci.editReply(
+        "Hit a wall on my end. Try that again in a sec. Even I lose a round now and then.",
+      );
     }
-  } catch (err) {
-    console.error(err);
-    await ci.editReply(
-      "Hit a wall on my end. Try that again in a sec. Even I lose a round now and then. 🥊",
-    );
+  }
+
+  if (ci.commandName === "kb-add") {
+    if (!isAdmin(ci.user.id)) {
+      await ci.reply({
+        content: "Not on the list. Nice try.",
+        ephemeral: true,
+      });
+      return;
+    }
+    const question = ci.options.getString("question", true);
+    const answer = ci.options.getString("answer", true);
+    const category = ci.options.getString("category") ?? null;
+
+    await ci.deferReply({ ephemeral: true });
+    try {
+      const vector = await embed(question);
+      const entry = await prisma.knowledgeEntry.create({
+        data: {
+          question,
+          answer,
+          category,
+          embedding: vector,
+          createdBy: ci.user.id,
+        },
+      });
+      await ci.editReply(`Added entry #${entry.id}. Knowledge base updated.`);
+    } catch (err) {
+      console.error(err);
+      await ci.editReply("Couldn't save that entry. Check logs.");
+    }
+    return;
+  }
+
+  if (ci.commandName === "kb-edit") {
+    if (!isAdmin(ci.user.id)) {
+      await ci.reply({
+        content: "Not on the list. Nice try.",
+        ephemeral: true,
+      });
+      return;
+    }
+    const id = ci.options.getInteger("id", true);
+    const question = ci.options.getString("question");
+    const answer = ci.options.getString("answer");
+    const category = ci.options.getString("category");
+
+    await ci.deferReply({ ephemeral: true });
+    try {
+      const existing = await prisma.knowledgeEntry.findUnique({
+        where: { id },
+      });
+      if (!existing) {
+        await ci.editReply(`No entry #${id}.`);
+        return;
+      }
+      const newQuestion = question ?? existing.question;
+      const newAnswer = answer ?? existing.answer;
+      const newVector = question
+        ? await embed(newQuestion)
+        : (existing.embedding as number[]);
+
+      await prisma.knowledgeEntry.update({
+        where: { id },
+        data: {
+          question: newQuestion,
+          answer: newAnswer,
+          category: category ?? existing.category,
+          embedding: newVector,
+        },
+      });
+      await ci.editReply(`Updated entry #${id}.`);
+    } catch (err) {
+      console.error(err);
+      await ci.editReply("Couldn't update that entry. Check logs.");
+    }
+    return;
+  }
+
+  if (ci.commandName === "kb-delete") {
+    if (!isAdmin(ci.user.id)) {
+      await ci.reply({
+        content: "Not on the list. Nice try.",
+        ephemeral: true,
+      });
+      return;
+    }
+    const id = ci.options.getInteger("id", true);
+    await ci.deferReply({ ephemeral: true });
+    try {
+      await prisma.knowledgeEntry.delete({ where: { id } });
+      await ci.editReply(`Deleted entry #${id}.`);
+    } catch (err) {
+      console.error(err);
+      await ci.editReply(`No entry #${id}, or delete failed.`);
+    }
+    return;
+  }
+
+  if (ci.commandName === "kb-list") {
+    if (!isAdmin(ci.user.id)) {
+      await ci.reply({
+        content: "Not on the list. Nice try.",
+        ephemeral: true,
+      });
+      return;
+    }
+    await ci.deferReply({ ephemeral: true });
+    const entries = await prisma.knowledgeEntry.findMany({
+      orderBy: { id: "asc" },
+      select: { id: true, question: true, category: true },
+      take: 50,
+    });
+    if (entries.length === 0) {
+      await ci.editReply("Knowledge base is empty.");
+      return;
+    }
+    const list = entries
+      .map((e) => `#${e.id} [${e.category ?? "uncategorized"}] ${e.question}`)
+      .join("\n");
+    for (const part of chunk(list))
+      await ci.followUp({ content: part, ephemeral: true });
+    // await ci.editReply(
+    //   `${entries.length} entr${entries.length === 1 ? "y" : "ies"}:`,
+    // );
+    return;
   }
 });
 
@@ -164,7 +310,7 @@ client.on(Events.MessageCreate, async (message: Message) => {
   } catch (err) {
     console.error(err);
     await message.reply(
-      "Something broke on my end. Give me a second, I don't lose twice in a row. 🥊",
+      "Something broke on my end. Give me a second, I don't lose twice in a row.",
     );
   }
 });
